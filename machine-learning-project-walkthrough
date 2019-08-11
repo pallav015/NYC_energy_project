@@ -1,0 +1,885 @@
+Introduction: Machine Learning Project Part 1
+In this notebook, we will walk through solving a complete machine learning problem using a real-world dataset. This was a "homework" assignment given to me for a job application over summer 2018. The entire assignment can be viewed here and the one sentence summary is:
+
+Use the provided building energy data to develop a model that can predict a building's Energy Star score, and then interpret the results to find the variables that are most predictive of the score.
+
+This is a supervised, regression machine learning task: given a set of data with targets (in this case the score) included, we want to train a model that can learn to map the features (also known as the explanatory variables) to the target.
+
+Supervised problem: we are given both the features and the target
+Regression problem: the target is a continous variable, in this case ranging from 0-100
+During training, we want the model to learn the relationship between the features and the score so we give it both the features and the answer. Then, to test how well the model has learned, we evaluate it on a testing set where it has never seen the answers!
+
+Machine Learning Workflow
+Although the exact implementation details can vary, the general structure of a machine learning project stays relatively constant:
+
+Data cleaning and formatting
+Exploratory data analysis
+Feature engineering and selection
+Establish a baseline and compare several machine learning models on a performance metric
+Perform hyperparameter tuning on the best model to optimize it for the problem
+Evaluate the best model on the testing set
+Interpret the model results to the extent possible
+Draw conclusions and write a well-documented report
+Setting up the structure of the pipeline ahead of time lets us see how one step flows into the other. However, the machine learning pipeline is an iterative procedure and so we don't always follow these steps in a linear fashion. We may revisit a previous step based on results from further down the pipeline. For example, while we may perform feature selection before building any models, we may use the modeling results to go back and select a different set of features. Or, the modeling may turn up unexpected results that mean we want to explore our data from another angle. Generally, you have to complete one step before moving on to the next, but don't feel like once you have finished one step the first time, you cannot go back and make improvements!
+
+This notebook will cover the first three (and a half) steps of the pipeline with the other parts discussed in two additional notebooks. Throughout this series, the objective is to show how all the different data science practices come together to form a complete project. I try to focus more on the implementations of the methods rather than explaining them at a low-level, but have provided resources for those who want to go deeper. For the single best book (in my opinion) for learning the basics and implementing machine learning practices in Python, check out Hands-On Machine Learning with Scikit-Learn and Tensorflow by Aurelion Geron.
+
+With this outline in place to guide us, let's get started!
+
+Imports
+We will use the standard data science and machine learning libraries: numpy, pandas, and scikit-learn. We also use matplotlib and seaborn for visualization.
+
+In [1]:
+# Pandas and numpy for data manipulation
+import pandas as pd
+import numpy as np
+
+# No warnings about setting value on copy of slice
+pd.options.mode.chained_assignment = None
+
+# Display up to 60 columns of a dataframe
+pd.set_option('display.max_columns', 60)
+
+# Matplotlib visualization
+import matplotlib.pyplot as plt
+%matplotlib inline
+
+# Set default font size
+plt.rcParams['font.size'] = 24
+
+# Internal ipython tool for setting figure size
+from IPython.core.pylabtools import figsize
+
+# Seaborn for visualization
+import seaborn as sns
+sns.set(font_scale = 2)
+
+# Splitting data into training and testing
+from sklearn.model_selection import train_test_split
+Data Cleaning and Formatting
+Load in the Data and Examine
+We will be loading our data into a pandas dataframe, one of the most useful data structures for data science. Think of it as a spreadsheet within Python that we can easily manipulate, clean, and visualize. Pandas has many methods to help make the data science/machine learning pipeline as smooth as possible.
+
+In [2]:
+# Read in data into a dataframe 
+data = pd.read_csv('data/Energy_and_Water_Data_Disclosure_for_Local_Law_84_2017__Data_for_Calendar_Year_2016_.csv')
+
+# Display top of dataframe
+data.head()
+Out[2]:
+Order	Property Id	Property Name	Parent Property Id	Parent Property Name	BBL - 10 digits	NYC Borough, Block and Lot (BBL) self-reported	NYC Building Identification Number (BIN)	Address 1 (self-reported)	Address 2	Postal Code	Street Number	Street Name	Borough	DOF Gross Floor Area	Primary Property Type - Self Selected	List of All Property Use Types at Property	Largest Property Use Type	Largest Property Use Type - Gross Floor Area (ft²)	2nd Largest Property Use Type	2nd Largest Property Use - Gross Floor Area (ft²)	3rd Largest Property Use Type	3rd Largest Property Use Type - Gross Floor Area (ft²)	Year Built	Number of Buildings - Self-reported	Occupancy	Metered Areas (Energy)	Metered Areas (Water)	ENERGY STAR Score	Site EUI (kBtu/ft²)	Weather Normalized Site EUI (kBtu/ft²)	Weather Normalized Site Electricity Intensity (kWh/ft²)	Weather Normalized Site Natural Gas Intensity (therms/ft²)	Weather Normalized Source EUI (kBtu/ft²)	Fuel Oil #1 Use (kBtu)	Fuel Oil #2 Use (kBtu)	Fuel Oil #4 Use (kBtu)	Fuel Oil #5 & 6 Use (kBtu)	Diesel #2 Use (kBtu)	District Steam Use (kBtu)	Natural Gas Use (kBtu)	Weather Normalized Site Natural Gas Use (therms)	Electricity Use - Grid Purchase (kBtu)	Weather Normalized Site Electricity (kWh)	Total GHG Emissions (Metric Tons CO2e)	Direct GHG Emissions (Metric Tons CO2e)	Indirect GHG Emissions (Metric Tons CO2e)	Property GFA - Self-Reported (ft²)	Water Use (All Water Sources) (kgal)	Water Intensity (All Water Sources) (gal/ft²)	Source EUI (kBtu/ft²)	Release Date	Water Required?	DOF Benchmarking Submission Status	Latitude	Longitude	Community Board	Council District	Census Tract	NTA
+0	1	13286	201/205	13286	201/205	1013160001	1013160001	1037549	201/205 East 42nd st.	Not Available	10017	675	3 AVENUE	Manhattan	289356.0	Office	Office	Office	293447	Not Available	Not Available	Not Available	Not Available	1963	2	100	Whole Building	Not Available	Not Available	305.6	303.1	37.8	Not Available	614.2	Not Available	Not Available	Not Available	Not Available	Not Available	5.15506751E7	Not Available	Not Available	38139374.2	1.10827705E7	6962.2	0	6962.2	762051	Not Available	Not Available	619.4	05/01/2017 05:32:03 PM	No	In Compliance	40.750791	-73.973963	6.0	4.0	88.0	Turtle Bay-East Midtown ...
+1	2	28400	NYP Columbia (West Campus)	28400	NYP Columbia (West Campus)	1021380040	1-02138-0040	1084198; 1084387;1084385; 1084386; 1084388; 10...	622 168th Street	Not Available	10032	180	FT WASHINGTON AVENUE	Manhattan	3693539.0	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	3889181	Not Available	Not Available	Not Available	Not Available	1969	12	100	Whole Building	Whole Building	55	229.8	228.8	24.8	2.4	401.1	Not Available	1.96248472E7	Not Available	Not Available	Not Available	-3.914148026E8	933073441	9330734.4	332365924	9.62613121E7	55870.4	51016.4	4854.1	3889181	Not Available	Not Available	404.3	04/27/2017 11:23:27 AM	No	In Compliance	40.841402	-73.942568	12.0	10.0	251.0	Washington Heights South ...
+2	3	4778226	MSCHoNY North	28400	NYP Columbia (West Campus)	1021380030	1-02138-0030	1063380	3975 Broadway	Not Available	10032	3975	BROADWAY	Manhattan	152765.0	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	231342	Not Available	Not Available	Not Available	Not Available	1924	1	100	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	0	0	0	231342	Not Available	Not Available	Not Available	04/27/2017 11:23:27 AM	No	In Compliance	40.840427	-73.940249	12.0	10.0	251.0	Washington Heights South ...
+3	4	4778267	Herbert Irving Pavilion & Millstein Hospital	28400	NYP Columbia (West Campus)	1021390001	1-02139-0001	1087281; 1076746	161 Fort Washington Ave	177 Fort Washington Ave	10032	161	FT WASHINGTON AVENUE	Manhattan	891040.0	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	1305748	Not Available	Not Available	Not Available	Not Available	1971	1	100	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	0	0	0	1305748	Not Available	Not Available	Not Available	04/27/2017 11:23:27 AM	No	In Compliance	40.840746	-73.942854	12.0	10.0	255.0	Washington Heights South ...
+4	5	4778288	Neuro Institute	28400	NYP Columbia (West Campus)	1021390085	1-02139-0085	1063403	710 West 168th Street	Not Available	10032	193	FT WASHINGTON AVENUE	Manhattan	211400.0	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	Hospital (General Medical & Surgical)	179694	Not Available	Not Available	Not Available	Not Available	1932	1	100	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	Not Available	0	0	0	179694	Not Available	Not Available	Not Available	04/27/2017 11:23:27 AM	No	In Compliance	40.841559	-73.942528	12.0	10.0	255.0	Washington Heights South ...
+Taking a look at the raw data, we can already see a number of issues we'll have to solve. First of all, there are 60 columns and we don't know what many of them mean! All we know from the problem statement is that we want to predict the number in the score column. Some of the other column definitions can be reasonably guessed, but others are difficult to understand (I do research with building energy and still could not understand every column). In machine learning, this isn't actually a problem, because we let the model decide which features are important. Sometimes we may not even be given column names or told what we are predicting. Nonetheless, I like to understand the problem to the extent possible, and because we also want to interpret the model results, it would be a good idea to have some knowledge of the columns.
+
+Rather than contact the company who gave me the assignment to find out if they knew the definition of the columns, I decided to try and find them on my own. After looking at the name of the file, Energy_and_Water_Data_Disclosure_for_Local_Law_84_2017__Data_for_Calendar_Year_2016_.csv, I searched for "Local Law 84." Doing so leads to this webpage which tells us that Local Law 84 is a New York City requirement stating that all buildings greater than $50,000 ft^2$ must report a certain set of energy-related numbers every year. After a little more searching, we can get to this pdf document that details the meaning of every column.
+
+While we don't need to study every column, it would be a good idea to at least understand the target we want to predict. Here is the definition for the score target:
+
+A 1-to-100 percentile ranking for specified building types, calculated in Portfolio Manager, based on self-reported energy usage for the reporting year.
+
+That seems pretty straightforward: the Energy Star Score is a method of ranking buildings in terms of energy efficiency with 1 the worst and 100 the best. It is a relative percentile ranking which means buildings are scored relative to one another and should display a uniform distribution across the range of values.
+
+Data Types and Missing Values
+The dataframe.info method is a quick way to assess the data by displaying the data types of each column and the number of non-missing values. Already from looking at the dataframe, there might be a problem because the missing values are coded as "Not Available" rather than as np.nan (not a number). This means the columns with numbers will not be represented as numeric because pandas converts columns with any strings values into columns of all strings.
+
+In [3]:
+# See the column data types and non-missing values
+data.info()
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 11746 entries, 0 to 11745
+Data columns (total 60 columns):
+Order                                                         11746 non-null int64
+Property Id                                                   11746 non-null int64
+Property Name                                                 11746 non-null object
+Parent Property Id                                            11746 non-null object
+Parent Property Name                                          11746 non-null object
+BBL - 10 digits                                               11735 non-null object
+NYC Borough, Block and Lot (BBL) self-reported                11746 non-null object
+NYC Building Identification Number (BIN)                      11746 non-null object
+Address 1 (self-reported)                                     11746 non-null object
+Address 2                                                     11746 non-null object
+Postal Code                                                   11746 non-null object
+Street Number                                                 11622 non-null object
+Street Name                                                   11624 non-null object
+Borough                                                       11628 non-null object
+DOF Gross Floor Area                                          11628 non-null float64
+Primary Property Type - Self Selected                         11746 non-null object
+List of All Property Use Types at Property                    11746 non-null object
+Largest Property Use Type                                     11746 non-null object
+Largest Property Use Type - Gross Floor Area (ft²)            11746 non-null object
+2nd Largest Property Use Type                                 11746 non-null object
+2nd Largest Property Use - Gross Floor Area (ft²)             11746 non-null object
+3rd Largest Property Use Type                                 11746 non-null object
+3rd Largest Property Use Type - Gross Floor Area (ft²)        11746 non-null object
+Year Built                                                    11746 non-null int64
+Number of Buildings - Self-reported                           11746 non-null int64
+Occupancy                                                     11746 non-null int64
+Metered Areas (Energy)                                        11746 non-null object
+Metered Areas  (Water)                                        11746 non-null object
+ENERGY STAR Score                                             11746 non-null object
+Site EUI (kBtu/ft²)                                           11746 non-null object
+Weather Normalized Site EUI (kBtu/ft²)                        11746 non-null object
+Weather Normalized Site Electricity Intensity (kWh/ft²)       11746 non-null object
+Weather Normalized Site Natural Gas Intensity (therms/ft²)    11746 non-null object
+Weather Normalized Source EUI (kBtu/ft²)                      11746 non-null object
+Fuel Oil #1 Use (kBtu)                                        11746 non-null object
+Fuel Oil #2 Use (kBtu)                                        11746 non-null object
+Fuel Oil #4 Use (kBtu)                                        11746 non-null object
+Fuel Oil #5 & 6 Use (kBtu)                                    11746 non-null object
+Diesel #2 Use (kBtu)                                          11746 non-null object
+District Steam Use (kBtu)                                     11746 non-null object
+Natural Gas Use (kBtu)                                        11746 non-null object
+Weather Normalized Site Natural Gas Use (therms)              11746 non-null object
+Electricity Use - Grid Purchase (kBtu)                        11746 non-null object
+Weather Normalized Site Electricity (kWh)                     11746 non-null object
+Total GHG Emissions (Metric Tons CO2e)                        11746 non-null object
+Direct GHG Emissions (Metric Tons CO2e)                       11746 non-null object
+Indirect GHG Emissions (Metric Tons CO2e)                     11746 non-null object
+Property GFA - Self-Reported (ft²)                            11746 non-null int64
+Water Use (All Water Sources) (kgal)                          11746 non-null object
+Water Intensity (All Water Sources) (gal/ft²)                 11746 non-null object
+Source EUI (kBtu/ft²)                                         11746 non-null object
+Release Date                                                  11746 non-null object
+Water Required?                                               11628 non-null object
+DOF Benchmarking Submission Status                            11716 non-null object
+Latitude                                                      9483 non-null float64
+Longitude                                                     9483 non-null float64
+Community Board                                               9483 non-null float64
+Council District                                              9483 non-null float64
+Census Tract                                                  9483 non-null float64
+NTA                                                           9483 non-null object
+dtypes: float64(6), int64(6), object(48)
+memory usage: 5.4+ MB
+Sure enough, there are a number of columns with numbers that have been recorded as object datatypes. These will have to be converted to float datatype before we can do any numerical analysis.
+
+Convert Data to Correct Types
+We convert the columns with numbers into numeric data types by replacing the "Not Available" entries with np.nan which can be interpreted as floats. Then we will convert the columns that contain numeric values (such as square feet or energy usage) into numeric datatypes.
+
+In [4]:
+# Replace all occurrences of Not Available with numpy not a number
+data = data.replace({'Not Available': np.nan})
+
+# Iterate through the columns
+for col in list(data.columns):
+    # Select columns that should be numeric
+    if ('ft²' in col or 'kBtu' in col or 'Metric Tons CO2e' in col or 'kWh' in 
+        col or 'therms' in col or 'gal' in col or 'Score' in col):
+        # Convert the data type to float
+        data[col] = data[col].astype(float)
+In [5]:
+# Statistics for each column
+data.describe()
+Out[5]:
+Order	Property Id	DOF Gross Floor Area	Largest Property Use Type - Gross Floor Area (ft²)	2nd Largest Property Use - Gross Floor Area (ft²)	3rd Largest Property Use Type - Gross Floor Area (ft²)	Year Built	Number of Buildings - Self-reported	Occupancy	ENERGY STAR Score	Site EUI (kBtu/ft²)	Weather Normalized Site EUI (kBtu/ft²)	Weather Normalized Site Electricity Intensity (kWh/ft²)	Weather Normalized Site Natural Gas Intensity (therms/ft²)	Weather Normalized Source EUI (kBtu/ft²)	Fuel Oil #1 Use (kBtu)	Fuel Oil #2 Use (kBtu)	Fuel Oil #4 Use (kBtu)	Fuel Oil #5 & 6 Use (kBtu)	Diesel #2 Use (kBtu)	District Steam Use (kBtu)	Natural Gas Use (kBtu)	Weather Normalized Site Natural Gas Use (therms)	Electricity Use - Grid Purchase (kBtu)	Weather Normalized Site Electricity (kWh)	Total GHG Emissions (Metric Tons CO2e)	Direct GHG Emissions (Metric Tons CO2e)	Indirect GHG Emissions (Metric Tons CO2e)	Property GFA - Self-Reported (ft²)	Water Use (All Water Sources) (kgal)	Water Intensity (All Water Sources) (gal/ft²)	Source EUI (kBtu/ft²)	Latitude	Longitude	Community Board	Council District	Census Tract
+count	11746.000000	1.174600e+04	1.162800e+04	1.174400e+04	3741.000000	1484.000000	11746.000000	11746.000000	11746.000000	9642.000000	11583.000000	10281.000000	10959.000000	9783.000000	10281.000000	9.000000e+00	2.581000e+03	1.321000e+03	5.940000e+02	1.600000e+01	9.360000e+02	1.030400e+04	9.784000e+03	1.150200e+04	1.096000e+04	1.167200e+04	1.166300e+04	1.168100e+04	1.174600e+04	7.762000e+03	7762.000000	11583.000000	9483.000000	9483.000000	9483.000000	9483.000000	9483.000000
+mean	7185.759578	3.642958e+06	1.732695e+05	1.605524e+05	22778.682010	12016.825270	1948.738379	1.289971	98.762557	59.854594	280.071484	309.747466	11.072643	1.901441	417.915709	3.395398e+06	3.186882e+06	5.294367e+06	2.429105e+06	1.193594e+06	2.868907e+08	5.048545e+07	5.364578e+05	5.965472e+06	1.768752e+06	4.553657e+03	2.477937e+03	2.076339e+03	1.673739e+05	1.591798e+04	136.172432	385.908029	40.754379	-73.957057	7.140673	15.771275	4977.596647
+std	4323.859984	1.049070e+06	3.367055e+05	3.095746e+05	55094.441422	27959.755486	30.576386	4.017484	7.501603	29.993586	8607.178877	9784.731207	127.733868	97.204587	10530.524339	2.213237e+06	5.497154e+06	5.881863e+06	4.442946e+06	3.558178e+06	3.124603e+09	3.914719e+09	4.022606e+07	3.154430e+07	9.389154e+06	2.041639e+05	1.954498e+05	5.931295e+04	3.189238e+05	1.529524e+05	1730.726938	9312.736225	0.080120	0.046337	3.954129	15.674375	13520.422990
+min	1.000000	7.365000e+03	5.002800e+04	5.400000e+01	0.000000	0.000000	1600.000000	0.000000	0.000000	1.000000	0.000000	0.000000	0.000000	0.000000	0.000000	2.085973e+05	0.000000e+00	0.000000e+00	0.000000e+00	0.000000e+00	-4.690797e+08	0.000000e+00	0.000000e+00	0.000000e+00	0.000000e+00	0.000000e+00	0.000000e+00	-2.313430e+04	0.000000e+00	0.000000e+00	0.000000	0.000000	40.516065	-74.243582	1.000000	1.000000	1.000000
+25%	3428.250000	2.747222e+06	6.524000e+04	6.520100e+04	4000.000000	1720.750000	1927.000000	1.000000	100.000000	37.000000	61.800000	65.100000	3.800000	0.100000	103.500000	1.663594e+06	2.550378e+05	2.128213e+06	0.000000e+00	5.698020e+04	4.320254e+06	1.098251e+06	1.176952e+04	1.043673e+06	3.019974e+05	3.287000e+02	1.474500e+02	9.480000e+01	6.699400e+04	2.595400e+03	27.150000	99.400000	40.707226	-73.984662	4.000000	4.000000	100.000000
+50%	6986.500000	3.236404e+06	9.313850e+04	9.132400e+04	8654.000000	5000.000000	1941.000000	1.000000	100.000000	65.000000	78.500000	82.500000	5.300000	0.500000	129.400000	4.328815e+06	1.380138e+06	4.312984e+06	0.000000e+00	2.070020e+05	9.931240e+06	4.103962e+06	4.445525e+04	1.855196e+06	5.416312e+05	5.002500e+02	2.726000e+02	1.718000e+02	9.408000e+04	4.692500e+03	45.095000	124.900000	40.759130	-73.962810	7.000000	9.000000	201.000000
+75%	11054.500000	4.409092e+06	1.596140e+05	1.532550e+05	20000.000000	12000.000000	1966.000000	1.000000	100.000000	85.000000	97.600000	102.500000	9.200000	0.700000	167.200000	4.938947e+06	4.445808e+06	6.514520e+06	4.293825e+06	2.918332e+05	2.064497e+07	6.855070e+06	7.348107e+04	4.370302e+06	1.284677e+06	9.084250e+02	4.475000e+02	4.249000e+02	1.584140e+05	8.031875e+03	70.805000	162.750000	40.817623	-73.932443	9.000000	33.000000	531.500000
+max	14993.000000	5.991312e+06	1.354011e+07	1.421712e+07	962428.000000	591640.000000	2019.000000	161.000000	100.000000	100.000000	869265.000000	939329.000000	6259.400000	9393.000000	986366.000000	6.275850e+06	1.046849e+08	7.907464e+07	4.410378e+07	1.435178e+07	7.163518e+10	3.942852e+11	3.942852e+09	1.691763e+09	4.958273e+08	2.094340e+07	2.094340e+07	4.764375e+06	1.421712e+07	6.594604e+06	96305.690000	912801.100000	40.912869	-73.715543	56.000000	51.000000	155101.000000
+Missing Values
+Now that we have the correct column datatypes, we can start analysis by looking at the percentage of missing values in each column. Missing values are fine when we do Exploratory Data Analysis, but they will have to be filled in for machine learning methods.
+
+Following is a function that calculates the number of missing values and the percentage of the total values that are missing for each column. As with many tasks in data science, I did not write this function myself, but rather found it online in a Stack Overflow forum!
+
+In [6]:
+# Function to calculate missing values by column
+def missing_values_table(df):
+        # Total missing values
+        mis_val = df.isnull().sum()
+        
+        # Percentage of missing values
+        mis_val_percent = 100 * df.isnull().sum() / len(df)
+        
+        # Make a table with the results
+        mis_val_table = pd.concat([mis_val, mis_val_percent], axis=1)
+        
+        # Rename the columns
+        mis_val_table_ren_columns = mis_val_table.rename(
+        columns = {0 : 'Missing Values', 1 : '% of Total Values'})
+        
+        # Sort the table by percentage of missing descending
+        mis_val_table_ren_columns = mis_val_table_ren_columns[
+            mis_val_table_ren_columns.iloc[:,1] != 0].sort_values(
+        '% of Total Values', ascending=False).round(1)
+        
+        # Print some summary information
+        print ("Your selected dataframe has " + str(df.shape[1]) + " columns.\n"      
+            "There are " + str(mis_val_table_ren_columns.shape[0]) +
+              " columns that have missing values.")
+        
+        # Return the dataframe with missing information
+        return mis_val_table_ren_columns
+In [7]:
+missing_values_table(data)
+Your selected dataframe has 60 columns.
+There are 46 columns that have missing values.
+Out[7]:
+Missing Values	% of Total Values
+Fuel Oil #1 Use (kBtu)	11737	99.9
+Diesel #2 Use (kBtu)	11730	99.9
+Address 2	11539	98.2
+Fuel Oil #5 & 6 Use (kBtu)	11152	94.9
+District Steam Use (kBtu)	10810	92.0
+Fuel Oil #4 Use (kBtu)	10425	88.8
+3rd Largest Property Use Type - Gross Floor Area (ft²)	10262	87.4
+3rd Largest Property Use Type	10262	87.4
+Fuel Oil #2 Use (kBtu)	9165	78.0
+2nd Largest Property Use Type	8005	68.2
+2nd Largest Property Use - Gross Floor Area (ft²)	8005	68.2
+Metered Areas (Water)	4609	39.2
+Water Intensity (All Water Sources) (gal/ft²)	3984	33.9
+Water Use (All Water Sources) (kgal)	3984	33.9
+Latitude	2263	19.3
+Longitude	2263	19.3
+Community Board	2263	19.3
+Council District	2263	19.3
+Census Tract	2263	19.3
+NTA	2263	19.3
+ENERGY STAR Score	2104	17.9
+Weather Normalized Site Natural Gas Intensity (therms/ft²)	1963	16.7
+Weather Normalized Site Natural Gas Use (therms)	1962	16.7
+Weather Normalized Source EUI (kBtu/ft²)	1465	12.5
+Weather Normalized Site EUI (kBtu/ft²)	1465	12.5
+Natural Gas Use (kBtu)	1442	12.3
+Weather Normalized Site Electricity Intensity (kWh/ft²)	787	6.7
+Weather Normalized Site Electricity (kWh)	786	6.7
+Electricity Use - Grid Purchase (kBtu)	244	2.1
+Site EUI (kBtu/ft²)	163	1.4
+Source EUI (kBtu/ft²)	163	1.4
+NYC Building Identification Number (BIN)	162	1.4
+Street Number	124	1.1
+Street Name	122	1.0
+Borough	118	1.0
+DOF Gross Floor Area	118	1.0
+Water Required?	118	1.0
+Direct GHG Emissions (Metric Tons CO2e)	83	0.7
+Total GHG Emissions (Metric Tons CO2e)	74	0.6
+Indirect GHG Emissions (Metric Tons CO2e)	65	0.6
+Metered Areas (Energy)	57	0.5
+DOF Benchmarking Submission Status	30	0.3
+NYC Borough, Block and Lot (BBL) self-reported	11	0.1
+BBL - 10 digits	11	0.1
+Largest Property Use Type	2	0.0
+Largest Property Use Type - Gross Floor Area (ft²)	2	0.0
+Although we want to be careful to not discard information and should be careful when dropping columns, if a column has a high percentage of missing values, then it probably will not be of much use.
+
+What columns to retain may be a little arbitrary (here is a discussion), but for this project, we will remove any columns with more than 50% missing values. In general, be careful about dropping any information because even if it is not there for all the observations, it may still be useful for predicting the target value.
+
+In [8]:
+# Get the columns with > 50% missing
+missing_df = missing_values_table(data);
+missing_columns = list(missing_df[missing_df['% of Total Values'] > 50].index)
+print('We will remove %d columns.' % len(missing_columns))
+Your selected dataframe has 60 columns.
+There are 46 columns that have missing values.
+We will remove 11 columns.
+In [9]:
+# Drop the columns
+data = data.drop(columns = list(missing_columns))
+
+# For older versions of pandas (https://github.com/pandas-dev/pandas/issues/19078)
+# data = data.drop(list(missing_columns), axis = 1)
+The rest of the missing values will have to be imputed (filled-in) using an appropriate strategy before doing machine learning.
+
+Exploratory Data Analysis
+Exploratory Data Analysis (EDA) is an open-ended process where we make plots and calculate statistics in order to explore our data. The purpose is to to find anomalies, patterns, trends, or relationships. These may be interesting by themselves (for example finding a correlation between two variables) or they can be used to inform modeling decisions such as which features to use. In short, the goal of EDA is to determine what our data can tell us! EDA generally starts out with a high-level overview, and then narrows in to specific parts of the dataset once as we find interesting areas to examine.
+
+To begin the EDA, we will focus on a single variable, the Energy Star Score, because this is the target for our machine learning models. We can rename the column to score for simplicity and then start exploring this value.
+
+Single Variable Plots
+A single variable (called univariate) plot shows the distribution of a single variable such as in a histogram.
+
+In [10]:
+figsize(8, 8)
+
+# Rename the score 
+data = data.rename(columns = {'ENERGY STAR Score': 'score'})
+
+# Histogram of the Energy Star Score
+plt.style.use('fivethirtyeight')
+plt.hist(data['score'].dropna(), bins = 100, edgecolor = 'k');
+plt.xlabel('Score'); plt.ylabel('Number of Buildings'); 
+plt.title('Energy Star Score Distribution');
+
+Our first plot has already revealed some surprising (and suspicious) information! As the Energy Star Score is a percentile rank, we would expect to see a completely flat distribution with each score making up 1% of the distribution (about 90 buildings). However, this is definitely not the case as we can see that the two most common scores, 1 and 100, make up a disproporationate number of the overall scores.
+
+If we go back to the definition of the score, we see it is based on self-reported energy usage. This poses a problem, because a building owner might be tempted to report lower electricity usage to artificially boost the score of their building. It is like giving students a grade based on self-reported test scores. This behavior would explain the high percentage of buildings with a perfect score of 100, but does not explain why so many buildings score at the very bottom!
+
+To contrast the Energy Star Score, we can look at the Energy Use Intensity (EUI), which is the total energy use divided by the square footage of the building. Here the energy usage is not self-reported, so this could be a more objective measure of the energy efficiency of a building. Moreover, this is not a percentile rank, so the absolute values are important and we would expect them to be approximately normally distributed with perhaps a few outliers on the low or high end.
+
+In [11]:
+# Histogram Plot of Site EUI
+figsize(8, 8)
+plt.hist(data['Site EUI (kBtu/ft²)'].dropna(), bins = 20, edgecolor = 'black');
+plt.xlabel('Site EUI'); 
+plt.ylabel('Count'); plt.title('Site EUI Distribution');
+
+Well this shows us we have another problem: outliers! The graph is incredibly skewed because of the presence of a few buildings with very high scores. It looks like we will have to take a slight detour to deal with the outliers. Let's look at the stats for this feature.
+
+In [12]:
+data['Site EUI (kBtu/ft²)'].describe()
+Out[12]:
+count     11583.000000
+mean        280.071484
+std        8607.178877
+min           0.000000
+25%          61.800000
+50%          78.500000
+75%          97.600000
+max      869265.000000
+Name: Site EUI (kBtu/ft²), dtype: float64
+In [13]:
+data['Site EUI (kBtu/ft²)'].dropna().sort_values().tail(10)
+Out[13]:
+3173     51328.8
+3170     51831.2
+3383     78360.1
+8269     84969.6
+3263     95560.2
+8268    103562.7
+8174    112173.6
+3898    126307.4
+7       143974.4
+8068    869265.0
+Name: Site EUI (kBtu/ft²), dtype: float64
+Wow! One building is clearly far above the rest.
+
+In [14]:
+data.loc[data['Site EUI (kBtu/ft²)'] == 869265, :]
+Out[14]:
+Order	Property Id	Property Name	Parent Property Id	Parent Property Name	BBL - 10 digits	NYC Borough, Block and Lot (BBL) self-reported	NYC Building Identification Number (BIN)	Address 1 (self-reported)	Postal Code	Street Number	Street Name	Borough	DOF Gross Floor Area	Primary Property Type - Self Selected	List of All Property Use Types at Property	Largest Property Use Type	Largest Property Use Type - Gross Floor Area (ft²)	Year Built	Number of Buildings - Self-reported	Occupancy	Metered Areas (Energy)	Metered Areas (Water)	score	Site EUI (kBtu/ft²)	Weather Normalized Site EUI (kBtu/ft²)	Weather Normalized Site Electricity Intensity (kWh/ft²)	Weather Normalized Site Natural Gas Intensity (therms/ft²)	Weather Normalized Source EUI (kBtu/ft²)	Natural Gas Use (kBtu)	Weather Normalized Site Natural Gas Use (therms)	Electricity Use - Grid Purchase (kBtu)	Weather Normalized Site Electricity (kWh)	Total GHG Emissions (Metric Tons CO2e)	Direct GHG Emissions (Metric Tons CO2e)	Indirect GHG Emissions (Metric Tons CO2e)	Property GFA - Self-Reported (ft²)	Water Use (All Water Sources) (kgal)	Water Intensity (All Water Sources) (gal/ft²)	Source EUI (kBtu/ft²)	Release Date	Water Required?	DOF Benchmarking Submission Status	Latitude	Longitude	Community Board	Council District	Census Tract	NTA
+8068	9984	4414323	234 Skillman	Not Applicable: Standalone Property	Not Applicable: Standalone Property	3028937502	3028937502	3390250 , 3338313	234 Skillman avenue	11211	234	SKILLMAN AVENUE	Brooklyn	61811.0	Multifamily Housing	Multifamily Housing	Multifamily Housing	56900.0	2004	1	90	Whole Building	NaN	1.0	869265.0	939329.0	9.9	9393.0	986366.0	4.945919e+10	534458968.8	1983655.6	563239.6	2627199.1	2627015.0	184.1	56900.0	2547.9	44.78	912801.1	05/01/2017 11:34:14 PM	NaN	In Compliance	40.716233	-73.94141	1.0	34.0	477.0	East Williamsburg ...
+It might be worthwhile for someone to follow up with this building owner! However, that is not our problem and we only need to figure out how to handle this information. Outliers can occur for many reasons: typos, malfunctions in measuring devices, incorrect units, or they can be legitimate but extreme values. Outliers can throw off a model because they are not indicative of the actual distribution of data.
+
+Removing Outliers
+When we remove outliers, we want to be careful that we are not throwing away measurements just because they look strange. They may be the result of actual phenomenon that we should further investigate. When removing outliers, I try to be as conservative as possible, using the definition of an extreme outlier:
+
+On the low end, an extreme outlier is below  $\text{First Quartile} -3 * \text{Interquartile Range}$
+On the high end, an extreme outlier is above $\text{Third Quartile} + 3 * \text{Interquartile Range}$
+In this case, I will only remove the single outlying point and see how the distribution looks.
+
+In [15]:
+# Calculate first and third quartile
+first_quartile = data['Site EUI (kBtu/ft²)'].describe()['25%']
+third_quartile = data['Site EUI (kBtu/ft²)'].describe()['75%']
+
+# Interquartile range
+iqr = third_quartile - first_quartile
+
+# Remove outliers
+data = data[(data['Site EUI (kBtu/ft²)'] > (first_quartile - 3 * iqr)) &
+            (data['Site EUI (kBtu/ft²)'] < (third_quartile + 3 * iqr))]
+In [16]:
+# Histogram Plot of Site EUI
+figsize(8, 8)
+plt.hist(data['Site EUI (kBtu/ft²)'].dropna(), bins = 20, edgecolor = 'black');
+plt.xlabel('Site EUI'); 
+plt.ylabel('Count'); plt.title('Site EUI Distribution');
+
+After removing the outliers, we can get back to the analysis.
+
+This plot looks a little less suspicious and is close to normally distributed with a long tail on the right side (it has a positive skew).
+
+Although this might be a more objective measure, our goal is still to predict the Energy Star Score, so we will move back to examining that variable. Even if the score is not a good measure, it is still our task to predict it, so that is what we will try to do! In the final report back to the company, I will point out this might not be an objective measure, and it would be a good idea to use different metrics to determine the efficiency of a building. Moreover, if we had more time for this project, it might be interesting to take a look at buildings with scores of 1 and 100 to see if they have anything in common.
+
+Looking for Relationships
+In order to look at the effect of categorical variables on the score, we can make a density plot colored by the value of the categorical variable. Density plots also show the distribution of a single variable and can be thought of as a smoothed histogram. If we color the density curves by a categorical variable, this will shows us how the distribution changes based on the class.
+
+The first plot we will make shows the distribution of scores by the property type. In order to not clutter the plot, we will limit the graph to building types that have more than 100 observations in the dataset.
+
+In [17]:
+# Create a list of buildings with more than 100 measurements
+types = data.dropna(subset=['score'])
+types = types['Largest Property Use Type'].value_counts()
+types = list(types[types.values > 100].index)
+In [18]:
+# Plot of distribution of scores for building categories
+figsize(12, 10)
+
+# Plot each building
+for b_type in types:
+    # Select the building type
+    subset = data[data['Largest Property Use Type'] == b_type]
+    
+    # Density plot of Energy Star scores
+    sns.kdeplot(subset['score'].dropna(),
+               label = b_type, shade = False, alpha = 0.8);
+    
+# label the plot
+plt.xlabel('Energy Star Score', size = 20); plt.ylabel('Density', size = 20); 
+plt.title('Density Plot of Energy Star Scores by Building Type', size = 28);
+
+From this graph, we can see that the building type does have an effect on the score (the negative scores on the graph are an artifact of the kernel density estimation procedure). While I was initially going to focus on the numerical columns for predicting the score, this graph tells us that we should include the property type because this information can be useful for determining the score. As building type is a categorical variable, it will have to be one-hot encoded before we can feed it into a machine learning model.
+
+To examine another categorical variable, borough, we can make the same graph, but this time colored by the borough.
+
+In [19]:
+# Create a list of boroughs with more than 100 observations
+boroughs = data.dropna(subset=['score'])
+boroughs = boroughs['Borough'].value_counts()
+boroughs = list(boroughs[boroughs.values > 100].index)
+In [20]:
+# Plot of distribution of scores for boroughs
+figsize(12, 10)
+
+# Plot each borough distribution of scores
+for borough in boroughs:
+    # Select the building type
+    subset = data[data['Borough'] == borough]
+    
+    # Density plot of Energy Star scores
+    sns.kdeplot(subset['score'].dropna(),
+               label = borough);
+    
+# label the plot
+plt.xlabel('Energy Star Score', size = 20); plt.ylabel('Density', size = 20); 
+plt.title('Density Plot of Energy Star Scores by Borough', size = 28);
+
+The borough of the building does not seem to make as significant a difference in the distribution of the score as does the building type. Nonetheless, it might make sense to include the borough as a categorical variable.
+
+Correlations between Features and Target
+In order to quantify correlations between the features (variables) and the target, we can calculate the Pearson correlation coefficient. This is a measure of the strength and direction of a linear relationship between two variables: a value of -1 means the two variables are perfectly negatively linearly correlated and a value of +1 means the two variables are perfectly positively linearly correlated. The figure below shows different values of the correlation coeffient and how they appear graphically.
+
+
+
+Although there can be non-linear relationships between the features and targets and correlation coefficients do not account for interactions between features, linear relationships are a good way to start exploring trends in the data. We can then use these values for selecting the features to employ in our model.
+
+The code below calculates the correlation coefficients between all the variables and the score.
+
+In [21]:
+# Find all correlations and sort 
+correlations_data = data.corr()['score'].sort_values()
+
+# Print the most negative correlations
+print(correlations_data.head(15), '\n')
+
+# Print the most positive correlations
+print(correlations_data.tail(15))
+Site EUI (kBtu/ft²)                                          -0.723864
+Weather Normalized Site EUI (kBtu/ft²)                       -0.713993
+Weather Normalized Source EUI (kBtu/ft²)                     -0.645542
+Source EUI (kBtu/ft²)                                        -0.641037
+Weather Normalized Site Electricity Intensity (kWh/ft²)      -0.358394
+Weather Normalized Site Natural Gas Intensity (therms/ft²)   -0.346046
+Direct GHG Emissions (Metric Tons CO2e)                      -0.147792
+Weather Normalized Site Natural Gas Use (therms)             -0.135211
+Natural Gas Use (kBtu)                                       -0.133648
+Year Built                                                   -0.121249
+Total GHG Emissions (Metric Tons CO2e)                       -0.113136
+Electricity Use - Grid Purchase (kBtu)                       -0.050639
+Weather Normalized Site Electricity (kWh)                    -0.048207
+Latitude                                                     -0.048196
+Property Id                                                  -0.046605
+Name: score, dtype: float64 
+
+Property Id                                          -0.046605
+Indirect GHG Emissions (Metric Tons CO2e)            -0.043982
+Longitude                                            -0.037455
+Occupancy                                            -0.033215
+Number of Buildings - Self-reported                  -0.022407
+Water Use (All Water Sources) (kgal)                 -0.013681
+Water Intensity (All Water Sources) (gal/ft²)        -0.012148
+Census Tract                                         -0.002299
+DOF Gross Floor Area                                  0.013001
+Property GFA - Self-Reported (ft²)                    0.017360
+Largest Property Use Type - Gross Floor Area (ft²)    0.018330
+Order                                                 0.036827
+Community Board                                       0.056612
+Council District                                      0.061639
+score                                                 1.000000
+Name: score, dtype: float64
+There are several strong negative correlations between the features and the target. The most negative correlations with the score are the different categories of Energy Use Intensity (EUI), Site EUI (kBtu/ft²) and  Weather Normalized Site EUI (kBtu/ft²) (these vary slightly in how they are calculated). The EUI is the amount of energy used by a building divided by the square footage of the buildings and is meant to be a measure of the efficiency of a building with a lower score being better. Intuitively, these correlations then make sense: as the EUI increases, the Energy Star Score tends to decrease.
+
+To account for possible non-linear relationships, we can take square root and natural log transformations of the features and then calculate the correlation coefficients with the score. To try and capture any possible relationships between the borough or building type (remember these are categorical variables) and the score we will have to one-hot encode these columns.
+
+In the following code, we take log and square root transformations of the numerical variables, one-hot encode the two selected categorical variables (building type and borough), calculate the correlations between all of the features and the score, and display the top 15 most positive and top 15 most negative correlations. This is a lot, but with pandas, it is straightforward to do each step!
+
+In [22]:
+# Select the numeric columns
+numeric_subset = data.select_dtypes('number')
+
+# Create columns with square root and log of numeric columns
+for col in numeric_subset.columns:
+    # Skip the Energy Star Score column
+    if col == 'score':
+        next
+    else:
+        numeric_subset['sqrt_' + col] = np.sqrt(numeric_subset[col])
+        numeric_subset['log_' + col] = np.log(numeric_subset[col])
+
+# Select the categorical columns
+categorical_subset = data[['Borough', 'Largest Property Use Type']]
+
+# One hot encode
+categorical_subset = pd.get_dummies(categorical_subset)
+
+# Join the two dataframes using concat
+# Make sure to use axis = 1 to perform a column bind
+features = pd.concat([numeric_subset, categorical_subset], axis = 1)
+
+# Drop buildings without an energy star score
+features = features.dropna(subset = ['score'])
+
+# Find correlations with the score 
+correlations = features.corr()['score'].dropna().sort_values()
+C:\Users\willk\Anaconda3\lib\site-packages\ipykernel_launcher.py:11: RuntimeWarning: divide by zero encountered in log
+  # This is added back by InteractiveShellApp.init_path()
+C:\Users\willk\Anaconda3\lib\site-packages\ipykernel_launcher.py:10: RuntimeWarning: invalid value encountered in sqrt
+  # Remove the CWD from sys.path while we load stuff.
+C:\Users\willk\Anaconda3\lib\site-packages\ipykernel_launcher.py:11: RuntimeWarning: invalid value encountered in log
+  # This is added back by InteractiveShellApp.init_path()
+In [23]:
+# Display most negative correlations
+correlations.head(15)
+Out[23]:
+Site EUI (kBtu/ft²)                                            -0.723864
+Weather Normalized Site EUI (kBtu/ft²)                         -0.713993
+sqrt_Site EUI (kBtu/ft²)                                       -0.699817
+sqrt_Weather Normalized Site EUI (kBtu/ft²)                    -0.689019
+sqrt_Weather Normalized Source EUI (kBtu/ft²)                  -0.671044
+sqrt_Source EUI (kBtu/ft²)                                     -0.669396
+Weather Normalized Source EUI (kBtu/ft²)                       -0.645542
+Source EUI (kBtu/ft²)                                          -0.641037
+log_Source EUI (kBtu/ft²)                                      -0.622892
+log_Weather Normalized Source EUI (kBtu/ft²)                   -0.620329
+log_Site EUI (kBtu/ft²)                                        -0.612039
+log_Weather Normalized Site EUI (kBtu/ft²)                     -0.601332
+log_Weather Normalized Site Electricity Intensity (kWh/ft²)    -0.424246
+sqrt_Weather Normalized Site Electricity Intensity (kWh/ft²)   -0.406669
+Weather Normalized Site Electricity Intensity (kWh/ft²)        -0.358394
+Name: score, dtype: float64
+In [24]:
+# Display most positive correlations
+correlations.tail(15)
+Out[24]:
+sqrt_Order                                                         0.028662
+Borough_Queens                                                     0.029545
+Largest Property Use Type_Supermarket/Grocery Store                0.030038
+Largest Property Use Type_Residence Hall/Dormitory                 0.035407
+Order                                                              0.036827
+Largest Property Use Type_Hospital (General Medical & Surgical)    0.048410
+Borough_Brooklyn                                                   0.050486
+log_Community Board                                                0.055495
+Community Board                                                    0.056612
+sqrt_Community Board                                               0.058029
+sqrt_Council District                                              0.060623
+log_Council District                                               0.061101
+Council District                                                   0.061639
+Largest Property Use Type_Office                                   0.158484
+score                                                              1.000000
+Name: score, dtype: float64
+After transforming the features, the strongest relationships are still those related to Energy Use Intensity (EUI). The log and square root transformations do not seem the have resulted in any stronger relationships. There are no strong positive linear relationships although we do see that a building type of office (Largest Property Use Type_Office) is slightly positively correlated with the score. This variable is a one-hot encoded representation of the categorical variables for building type.
+
+We can use these correlations in order to perform feature selection (coming up in a little bit). Right now, let's graph the most significant correlation (in terms of absolute value) in the dataset which is Site EUI (kBtu/ft^2). We can color the graph by the building type to show how that affects the relationship.
+
+Two-Variable Plots
+In order to visualize the relationship between two variables, we use a scatterplot. We can also include additional variables using aspects such as color of the markers or size of the markers. Here we will plot two numeric variables against one another and use color to represent a third categorical variable.
+
+In [25]:
+figsize(12, 10)
+
+# Extract the building types
+features['Largest Property Use Type'] = data.dropna(subset = ['score'])['Largest Property Use Type']
+
+# Limit to building types with more than 100 observations (from previous code)
+features = features[features['Largest Property Use Type'].isin(types)]
+
+# Use seaborn to plot a scatterplot of Score vs Log Source EUI
+sns.lmplot('Site EUI (kBtu/ft²)', 'score', 
+          hue = 'Largest Property Use Type', data = features,
+          scatter_kws = {'alpha': 0.8, 's': 60}, fit_reg = False,
+          size = 12, aspect = 1.2);
+
+# Plot labeling
+plt.xlabel("Site EUI", size = 28)
+plt.ylabel('Energy Star Score', size = 28)
+plt.title('Energy Star Score vs Site EUI', size = 36);
+
+There is a clear negative relationship between the Site EUI and the score. The relationship is not perfectly linear (it looks with a correlation coefficient of -0.7, but it does look like this feature will be important for predicting the score of a building.
+
+Pairs Plot
+As a final exercise for exploratory data analysis, we can make a pairs plot between several different variables. The Pairs Plot is a great way to examine many variables at once as it shows scatterplots between pairs of variables and histograms of single variables on the diagonal.
+
+Using the seaborn PairGrid function, we can map different plots on to the three aspects of the grid. The upper triangle will have scatterplots, the diagonal will show histograms, and the lower triangle will show both the correlation coefficient between two variables and a 2-D kernel density estimate of the two variables.
+
+In [26]:
+# Extract the columns to  plot
+plot_data = features[['score', 'Site EUI (kBtu/ft²)', 
+                      'Weather Normalized Source EUI (kBtu/ft²)', 
+                      'log_Total GHG Emissions (Metric Tons CO2e)']]
+
+# Replace the inf with nan
+plot_data = plot_data.replace({np.inf: np.nan, -np.inf: np.nan})
+
+# Rename columns 
+plot_data = plot_data.rename(columns = {'Site EUI (kBtu/ft²)': 'Site EUI', 
+                                        'Weather Normalized Source EUI (kBtu/ft²)': 'Weather Norm EUI',
+                                        'log_Total GHG Emissions (Metric Tons CO2e)': 'log GHG Emissions'})
+
+# Drop na values
+plot_data = plot_data.dropna()
+
+# Function to calculate correlation coefficient between two columns
+def corr_func(x, y, **kwargs):
+    r = np.corrcoef(x, y)[0][1]
+    ax = plt.gca()
+    ax.annotate("r = {:.2f}".format(r),
+                xy=(.2, .8), xycoords=ax.transAxes,
+                size = 20)
+
+# Create the pairgrid object
+grid = sns.PairGrid(data = plot_data, size = 3)
+
+# Upper is a scatter plot
+grid.map_upper(plt.scatter, color = 'red', alpha = 0.6)
+
+# Diagonal is a histogram
+grid.map_diag(plt.hist, color = 'red', edgecolor = 'black')
+
+# Bottom is correlation and density plot
+grid.map_lower(corr_func);
+grid.map_lower(sns.kdeplot, cmap = plt.cm.Reds)
+
+# Title for entire plot
+plt.suptitle('Pairs Plot of Energy Data', size = 36, y = 1.02);
+C:\Users\willk\Anaconda3\lib\site-packages\matplotlib\contour.py:967: UserWarning: The following kwargs were not used by contour: 'label', 'color'
+  s)
+
+To interpret the relationships in the plot, we can look for where the variables in one row intersect with the variables in one column. For example, to find the relationship between score and the log of GHG Emissions, we look at the score column and find the log GHG Emissions row. At the intersection (the lower left plot) we see that the score has a -0.35 correlation coefficient with this varible. If we look at the upper right plot, we can see a scatterplot of this relationship.
+
+Feature Engineering and Selection
+Now that we have explored the trends and relationships within the data, we can work on engineering a set of features for our models. We can use the results of the EDA to inform this feature engineering. In particular, we learned the following from EDA which can help us in engineering/selecting features:
+
+The score distribution varies by building type and to a lesser extent by borough. Although we will focus on numerical features, we should also include these two categorical features in the model.
+Taking the log transformation of features does not result in significant increases in the linear correlations between features and the score
+Before we get any further, we should define what feature engineering and selection are! These definitions are informal and have considerable overlap, but I like to think of them as two separate processes:
+
+Feature Engineering: The process of taking raw data and extracting or creating new features that allow a machine learning model to learn a mapping beween these features and the target. This might mean taking transformations of variables, such as we did with the log and square root, or one-hot encoding categorical variables so they can be used in a model. Generally, I think of feature engineering as adding additional features derived from the raw data.
+Feature Selection: The process of choosing the most relevant features in your data. "Most relevant" can depend on many factors, but it might be something as simple as the highest correlation with the target, or the features with the most variance. In feature selection, we remove features that do not help our model learn the relationship between features and the target. This can help the model generalize better to new data and results in a more interpretable model. Generally, I think of feature selection as subtracting features so we are left with only those that are most important.
+Feature engineering and selection are iterative processes that will usually require several attempts to get right. Often we will use the results of modeling, such as the feature importances from a random forest, to go back and redo feature selection, or we might later discover relationships that necessitate creating new variables. Moreover, these processes usually incorporate a mixture of domain knowledge and statistical qualitites of the data.
+
+Feature engineering and selection often has the highest returns on time invested in a machine learning problem. It can take quite a while to get right, but is often more important than the exact algorithm and hyperparameters used for the model. If we don't feed the model the correct data, then we are setting it up to fail and we should not expect it to learn!
+
+In this project, we will take the following steps for feature engineering:
+
+Select only the numerical variables and two categorical variables (borough and property use type)
+Add in the log transformation of the numerical variables
+One-hot encode the categorical variables
+For feature selection, we will do the following:
+
+Remove collinear features
+We will discuss collinearity (also called multicollinearity) when we get to that process!
+
+The following code selects the numeric features, adds in log transformations of all the numeric features, selects and one-hot encodes the categorical features, and joins the sets of features together.
+
+In [27]:
+# Copy the original data
+features = data.copy()
+
+# Select the numeric columns
+numeric_subset = data.select_dtypes('number')
+
+# Create columns with log of numeric columns
+for col in numeric_subset.columns:
+    # Skip the Energy Star Score column
+    if col == 'score':
+        next
+    else:
+        numeric_subset['log_' + col] = np.log(numeric_subset[col])
+        
+# Select the categorical columns
+categorical_subset = data[['Borough', 'Largest Property Use Type']]
+
+# One hot encode
+categorical_subset = pd.get_dummies(categorical_subset)
+
+# Join the two dataframes using concat
+# Make sure to use axis = 1 to perform a column bind
+features = pd.concat([numeric_subset, categorical_subset], axis = 1)
+
+features.shape
+C:\Users\willk\Anaconda3\lib\site-packages\ipykernel_launcher.py:13: RuntimeWarning: divide by zero encountered in log
+  del sys.path[0]
+C:\Users\willk\Anaconda3\lib\site-packages\ipykernel_launcher.py:13: RuntimeWarning: invalid value encountered in log
+  del sys.path[0]
+Out[27]:
+(11319, 110)
+At this point, we have 11319 observations (buildings) with 109 different features (one column is the score). Not all of these features are likely to be important for predicting the score, and several of these features are also redundant because they are highly correlated. We will deal with this second issue below.
+
+Remove Collinear Features
+Highly collinear features have a significant correlation coefficent between them. For example, in our dataset, the Site EUI and Weather Norm EUI are highly correlated because they are just slightly different means of calculating the energy use intensity.
+
+In [28]:
+plot_data = data[['Weather Normalized Site EUI (kBtu/ft²)', 'Site EUI (kBtu/ft²)']].dropna()
+
+plt.plot(plot_data['Site EUI (kBtu/ft²)'], plot_data['Weather Normalized Site EUI (kBtu/ft²)'], 'bo')
+plt.xlabel('Site EUI'); plt.ylabel('Weather Norm EUI')
+plt.title('Weather Norm EUI vs Site EUI, R = %0.4f' % np.corrcoef(data[['Weather Normalized Site EUI (kBtu/ft²)', 'Site EUI (kBtu/ft²)']].dropna(), rowvar=False)[0][1]);
+
+While variables in a dataset are usually correlated to a small degree, highly collinear variables can be redundant in the sense that we only need to retain one of the features to give our model the necessary information.
+
+Removing collinear features is a method to reduce model complexity by decreasing the number of features and can help to increase model generalization. It can also help us to interpret the model because we only have to worry about a single variable, such as EUI, rather than how both EUI and weather normalized EUI affect the score.
+
+There are a number of methods for removing collinear features, such as using the Variance Inflation Factor. We will use a simpler metric, and remove features that have a correlation coefficient above a certain threshold with each other (not with the score because we want variables that are highly correlated with the score!) For a more thorough discussion of removing collinear variables, check out this notebook on Kaggle.
+
+The following code removes the collinear features based on a threshold we select for the correlation coefficients by removing one of the two features that are compared. It also prints the correlations that it removes so we can see the effect of adjusting the threshold. We will use a threshold of 0.6 which removes one of a pair of features if the correlation coefficient between the features exceeds this value.
+
+Again, I did not actually write this code from scratch, but rather adapted it from a Stack Overflow answer
+
+In [29]:
+def remove_collinear_features(x, threshold):
+    '''
+    Objective:
+        Remove collinear features in a dataframe with a correlation coefficient
+        greater than the threshold. Removing collinear features can help a model
+        to generalize and improves the interpretability of the model.
+        
+    Inputs: 
+        threshold: any features with correlations greater than this value are removed
+    
+    Output: 
+        dataframe that contains only the non-highly-collinear features
+    '''
+    
+    # Dont want to remove correlations between Energy Star Score
+    y = x['score']
+    x = x.drop(columns = ['score'])
+    
+    # Calculate the correlation matrix
+    corr_matrix = x.corr()
+    iters = range(len(corr_matrix.columns) - 1)
+    drop_cols = []
+
+    # Iterate through the correlation matrix and compare correlations
+    for i in iters:
+        for j in range(i):
+            item = corr_matrix.iloc[j:(j+1), (i+1):(i+2)]
+            col = item.columns
+            row = item.index
+            val = abs(item.values)
+            
+            # If correlation exceeds the threshold
+            if val >= threshold:
+                # Print the correlated features and the correlation value
+                # print(col.values[0], "|", row.values[0], "|", round(val[0][0], 2))
+                drop_cols.append(col.values[0])
+
+    # Drop one of each pair of correlated columns
+    drops = set(drop_cols)
+    x = x.drop(columns = drops)
+    x = x.drop(columns = ['Weather Normalized Site EUI (kBtu/ft²)', 
+                          'Water Use (All Water Sources) (kgal)',
+                          'log_Water Use (All Water Sources) (kgal)',
+                          'Largest Property Use Type - Gross Floor Area (ft²)'])
+    
+    # Add the score back in to the data
+    x['score'] = y
+               
+    return x
+In [30]:
+# Remove the collinear features above a specified correlation coefficient
+features = remove_collinear_features(features, 0.6);
+C:\Users\willk\Anaconda3\lib\site-packages\ipykernel_launcher.py:33: RuntimeWarning: invalid value encountered in greater_equal
+In [31]:
+# Remove any columns with all na values
+features  = features.dropna(axis=1, how = 'all')
+features.shape
+Out[31]:
+(11319, 65)
+Our final dataset now has 64 features (one of the columns is the target). This is still quite a few, but mostly it is because we have one-hot encoded the categorical variables. Moreover, while a large number of features may be problematic for models such as linear regression, models such as the random forest perform implicit feature selection and automatically determine which features are important during traning. There are other feature selection steps to take, but for now we will keep all the features we have and see how the model performs.
+
+Additional Feature Selection
+There are plenty of more methods for feature selection. Some popular methods include principal components analysis (PCA) which transforms the features into a reduced number of dimensions that preserve the greatest variance, or independent components analysis (ICA) which aims to find the independent sources in a set of features. However, while these methods are effective at reducing the number of features, they create new features that have no physical meaning and hence make interpreting a model nearly impossible.
+
+These methods are very helpful for dealing with high-dimensional data and I would suggest reading more on the topic if you plan on dealing with machine learning problems!
+
+Split Into Training and Testing Sets
+In machine learning, we always need to separate our features into two sets:
+
+Training set which we provide to our model during training along with the answers so it can learn a mapping between the features and the target.
+Testing set which we use to evaluate the mapping learned by the model. The model has never seen the answers on the testing set, but instead, must make predictions using only the features. As we know the true answers for the test set, we can then compare the test predictions to the true test targets to ghet an estimate of how well our model will perform when deployed in the real world.
+For our problem, we will first extract all the buildings without an Energy Star Score (we don't know the true answer for these buildings so they will not be helpful for training or testing). Then, we will split the buildings with an Energy Star Score into a testing set of 30% of the buildings, and a training set of 70% of the buildings.
+
+Splitting the data into a random training and testing set is simple using scikit-learn. We can set the random state of the split to ensure consistent results.
+
+In [32]:
+# Extract the buildings with no score and the buildings with a score
+no_score = features[features['score'].isna()]
+score = features[features['score'].notnull()]
+
+print(no_score.shape)
+print(score.shape)
+(1858, 65)
+(9461, 65)
+In [33]:
+# Separate out the features and targets
+features = score.drop(columns='score')
+targets = pd.DataFrame(score['score'])
+
+# Replace the inf and -inf with nan (required for later imputation)
+features = features.replace({np.inf: np.nan, -np.inf: np.nan})
+
+# Split into 70% training and 30% testing set
+X, X_test, y, y_test = train_test_split(features, targets, test_size = 0.3, random_state = 42)
+
+print(X.shape)
+print(X_test.shape)
+print(y.shape)
+print(y_test.shape)
+(6622, 64)
+(2839, 64)
+(6622, 1)
+(2839, 1)
+We have 1858 buildings with no score, 6622 buildings with a score in the training set, and 2839 buildings with a score in the testing set. We have one final step to take in this notebook: determining a naive baseline for our models to beat!
+
+Establish a Baseline
+It's important to establish a naive baseline before we beginning making machine learning models. If the models we build cannot outperform a naive guess then we might have to admit that machine learning is not suited for this problem. This could be because we are not using the right models, because we need more data, or because there is a simpler solution that does not require machine learning. Establishing a baseline is crucial so we do not end up building a machine learning model only to realize we can't actually solve the problem.
+
+For a regression task, a good naive baseline is to predict the median value of the target on the training set for all examples on the test set. This is simple to implement and sets a relatively low bar for our models: if they cannot do better than guessing the medin value, then we will need to rethink our approach.
+
+Metric: Mean Absolute Error
+There are a number of metrics used in machine learning tasks and it can be difficult to know which one to choose. Most of the time it will depend on the particular problem and if you have a specific goal to optimize for. I like Andrew Ng's advice to use a single real-value performance metric in order to compare models because it simplifies the evaluate process. Rather than calculating multiple metrics and trying to determine how important each one is, we should use a single number. In this case, because we doing regression, the mean absolute error is an appropriate metric. This is also interpretable because it represents the average amount our estimate if off by in the same units as the target value.
+
+The function below calculates the mean absolute error between true values and predictions.
+
+In [34]:
+# Function to calculate mean absolute error
+def mae(y_true, y_pred):
+    return np.mean(abs(y_true - y_pred))
+Now we can make the median guess and evaluate it on the test set.
+
+In [35]:
+baseline_guess = np.median(y)
+
+print('The baseline guess is a score of %0.2f' % baseline_guess)
+print("Baseline Performance on the test set: MAE = %0.4f" % mae(y_test, baseline_guess))
+The baseline guess is a score of 66.00
+Baseline Performance on the test set: MAE = 24.5164
+This shows our average estimate on the test set is off by about 25 points. The scores are between 1 and 100 so this means the average error from a naive method if about 25%. The naive method of guessing the median training value provides us a low baseline for our models to beat!
+
+Conclusions
+In this notebook, we carried out the first three steps of a machine learning problem:
+
+Cleaned and formatted the raw data
+Performed an exploratory data analysis
+Developed a set of features to train our model using feature engineering and feature selection
+We also completed the crucial task of establishing a baseline metric so we can determine if our model is better than guessing!
+
+Hopefully, you are starting to get a sense of how each part of the pipeline flows into the next: cleaning the data and getting it into the proper format allows us to perform an exploratory data analyis. The EDA then informs our decisions in the feature engineering and selection stage. These three steps generally are performed in this order, although we may come back later and do more EDA or feature engineering based on our modeling results. Data science is an iterative process in which we are always looking for ways to improve our previous work. This means we do not have to get things perfect the first time (although we can try our best) because there are almost always opportunities to revisit our decisions once we know more about the problem.
+
+In part two, we will focus on implementing several machine learning methods, selecting the best model, and optimizing it for our problem using hyperparameter tuning with cross validation. As a final step here, we will save the datasets we developed to use again in the next part.
+
+In [36]:
+# Save the no scores, training, and testing data
+no_score.to_csv('data/no_score.csv', index = False)
+X.to_csv('data/training_features.csv', index = False)
+X_test.to_csv('data/testing_features.csv', index = False)
+y.to_csv('data/training_labels.csv', index = False)
+y_test.to_csv('data/testing_labels.csv', index = False)
